@@ -74,11 +74,10 @@ def load_ratings():
         row = row.rstrip()
         #import pdb; pdb.set_trace()
 
-        rating_id, movie_id, user_id, score = row.split()
+        movie_id, user_id, score = row.split()[0:3]
 
-        ratings = Ratings(rating_id=rating_id,
+        ratings = Ratings(user_id=user_id,
                           movie_id=movie_id,
-                          user_id=user_id,
                           score=score)
 
         db.session.add(ratings)
