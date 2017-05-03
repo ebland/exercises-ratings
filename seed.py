@@ -57,7 +57,6 @@ def load_movies():
         movie = Movie(movie_id=movie_id,
                       title=title,
                       released_at=release_at,
-
                       imdb_url=imdb_url)
 
         db.session.add(movie)
@@ -74,7 +73,7 @@ def load_ratings():
         row = row.rstrip()
         #import pdb; pdb.set_trace()
 
-        movie_id, user_id, score = row.split()[0:3]
+        user_id, movie_id, score = row.split()[0:3]
 
         ratings = Ratings(user_id=user_id,
                           movie_id=movie_id,

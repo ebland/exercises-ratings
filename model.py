@@ -25,7 +25,7 @@ class User(db.Model):
 
     def __repr__(self):
         return "<User user_id=%s email=%s>" % (self.user_id,
-                                                self.email)
+                                               self.email)
 
 
 # Put your Movie and Rating model classes here.
@@ -33,7 +33,7 @@ class User(db.Model):
 class Movie(db.Model):
     __tablename__ = "movie"
     movie_id = db.Column(db.Integer, autoincrement=True,
-                                      primary_key=True)
+                         primary_key=True)
     title = db.Column(db.String(150), nullable=False)
     released_at = db.Column(db.DateTime, nullable=True)
     imdb_url = db.Column(db.String(250), nullable=False)
@@ -42,33 +42,25 @@ class Movie(db.Model):
 class Ratings(db.Model):
     __tablename__ = "ratings"
     rating_id = db.Column(db.Integer, autoincrement=True,
-                                      primary_key=True)
-    movie_id = db.Column(db.Integer, nullable=False,
-                         db.ForeignKey('movies.movie_id'))
-
-
-    user_id = db.Column(db.Integer, nullable=False,
-                        db.ForeignKey('users.user_id'))
+                          primary_key=True)
+    movie_id = db.Column(db.Integer, db.ForeignKey('movie.movie_id'), 
+                            nullable=False )
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'),
+                            nullable=False)
     score = db.Column(db.Integer, nullable=False)
-
     user = db.relationship("User", backref=db.backref("ratings",
-                                                        order_by=rating_id))
+                                                      order_by=rating_id))
+    movie = db.relationship("Movie", backref=db.backref("ratings",
+                                                      order_by=rating_id))
 
-    movie = db.relationship("Movie",
-                            backref=db.backref("ratings",
-                                                order_by=rating_id))
-
-     def __repr__(self):
+    def __repr__(self):
         """Provide helpful representation when printed."""
 
         s = "<Rating rating_id=%s movie_id=%s user_id=%s score=%s>"
         return s % (self.rating_id, self.movie_id, self.user_id,
                     self.score)
-
-    
 ##############################################################################
 # Helper functions
-
 
 def connect_to_db(app):
     """Connect the database to our Flask app."""
