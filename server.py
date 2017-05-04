@@ -29,7 +29,6 @@ def index():
     """Homepage."""
     # a = jsonify([1,3])
     # return a
-
     return render_template("homepage.html")
 
 
@@ -40,6 +39,29 @@ def user_list():
     users = User.query.all()
     return render_template("user_list.html", users=users)
 
+
+@app.route('/register', methods=["GET"])
+def user_register_form():
+    """User registration form."""
+
+    return render_template("register_form.html")
+
+
+@app.route('/register', methods=["POST"])
+def user_register_process():
+    """Process for user registration."""
+
+    email = User.email.query.all()
+    email_received = request.form.get('email')
+    dup_email = []
+
+    for mail in email:
+        if mail == email_received:
+            dup_email.append(mail)
+        else:
+            email, password = Ratings.User.user_register_process(email)
+
+    return redirect("/")
 
 if __name__ == "__main__":
     # We have to set debug=True here, since it has to be True at the
@@ -52,6 +74,4 @@ if __name__ == "__main__":
     # Use the DebugToolbar
     DebugToolbarExtension(app)
 
-
-    
     app.run(port=5000, host='0.0.0.0')
