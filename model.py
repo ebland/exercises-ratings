@@ -1,6 +1,7 @@
 """Models and database functions for Ratings project."""
 
 from flask_sqlalchemy import SQLAlchemy
+import correlation
 
 # This is the connection to the PostgreSQL database; we're getting this through
 # the Flask-SQLAlchemy helper library. On this, we can find the `session`
@@ -15,6 +16,11 @@ db = SQLAlchemy()
 class User(db.Model):
     """User of ratings website."""
 
+    def __repr__(self):
+        """Print info on the User"""
+
+        return "< UserID: {} | Email: {} >".format(self.user_id, self.email)
+
     __tablename__ = "users"
 
     user_id = db.Column(db.Integer, autoincrement=True, primary_key=True)
@@ -23,42 +29,81 @@ class User(db.Model):
     age = db.Column(db.Integer, nullable=True)
     zipcode = db.Column(db.String(15), nullable=True)
 
-    def __repr__(self):
-        return "<User user_id=%s email=%s>" % (self.user_id,
-                                               self.email)
+    def similarity(self, other):
+        """Return Pearson rating for user compared to other user."""
 
+        u_ratings = {}
+        paired_ratings = []
 
-# Put your Movie and Rating model classes here.
+        for r in self.ratings:
+            u_ratings[r.movie_id] = r
+
+        for r in other.ratings:
+            u_r = u_ratings.get(r.movie_id)
+            if u_r:
+                paired_ratings.append((u_r.score, r.score))
+
+        if paired_ratings:
+            return correlation.pearson(paired_ratings)
+
+        else:
+            return 0.0
+
+    def predict_rating(self, movie):
+        """Predict user's rating of a movie."""
+
+        other_ratings = movie.ratings
+
+        similarities = [
+            (self.similarity(r.user), r)
+            for r in other_ratings
+        ]
+
+        similarities.sort(reverse=True)
+
+        similarities = [(sim, r) for sim, r in similarities
+                        if sim > 0]
+
+        if not similarities:
+            return None
+
+        numerator = sum([r.score * sim for sim, r in similarities])
+        denominator = sum([sim for sim, r in similarities])
+
+        return numerator/denominator
+
 
 class Movie(db.Model):
-    __tablename__ = "movie"
-    movie_id = db.Column(db.Integer, autoincrement=True,
-                         primary_key=True)
-    title = db.Column(db.String(150), nullable=False)
-    released_at = db.Column(db.DateTime, nullable=True)
+    """ A Movie object in the db"""
+
+    __tablename__ = "movies"
+
+    movie_id = db.Column(db.Integer, autoincrement=True, primary_key=True)
+    title = db.Column(db.String(90), nullable=False)
+    released_at = db.Column(db.DateTime)
     imdb_url = db.Column(db.String(250), nullable=False)
 
 
-class Ratings(db.Model):
-    __tablename__ = "ratings"
-    rating_id = db.Column(db.Integer, autoincrement=True,
-                          primary_key=True)
-    movie_id = db.Column(db.Integer, db.ForeignKey('movie.movie_id'), 
-                            nullable=False )
-    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'),
-                            nullable=False)
+class Rating(db.Model):
+    """ A single rating"""
+
+    def __repr__(self):
+        return "< User: {}, Movie: {}, Rating: {}".format(self.user_id,
+                                                          self.movie_id,
+                                                          self.score)
+
+    __tablename__ = 'ratings'
+
+    rating_id = db.Column(db.Integer, autoincrement=True, primary_key=True)
+    movie_id = db.Column(db.Integer, db.ForeignKey('movies.movie_id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     score = db.Column(db.Integer, nullable=False)
     user = db.relationship("User", backref=db.backref("ratings",
                                                       order_by=rating_id))
     movie = db.relationship("Movie", backref=db.backref("ratings",
-                                                      order_by=rating_id))
+                                                        order_by=rating_id))
 
-    def __repr__(self):
-        """Provide helpful representation when printed."""
 
-        s = "<Rating rating_id=%s movie_id=%s user_id=%s score=%s>"
-        return s % (self.rating_id, self.movie_id, self.user_id,
-                    self.score)
 ##############################################################################
 # Helper functions
 
