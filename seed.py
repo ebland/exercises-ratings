@@ -2,9 +2,9 @@
 
 from sqlalchemy import func
 from model import User
+from model import Rating
 from model import Movie
-from model import Ratings
-from datetime import datetime
+import datetime
 
 from model import connect_to_db, db
 from server import app
@@ -34,29 +34,32 @@ def load_users():
     # Once we're done, we should commit our work
     db.session.commit()
 
+    #Also add the Judgmental Eye
+    result = db.session.query(func.max(User.user_id)).one()
+    max_id = int(result[0])
+
+    eye = User(user_id=max_id+1, email="the-eye@of-judgment.com", password="evil")
+    db.session.add(eye)
+    db.session.commit()
+
 
 def load_movies():
     """Load movies from u.item into database."""
 
-    print "Movies"
-
     Movie.query.delete()
 
     for row in open("seed_data/u.item"):
-        row = row.rstrip()
-        # import pdb; pdb.set_trace()
+        row = row.rstrip().split('|')
+        movie_id, title, released_at, imdb_url = row[0], row[1], row[2], row[4]
 
-        movie_id, title, release_at, nothing, imdb_url = row.split("|")[0:5]
-
-        if release_at:
-           # import pdb; pdb.set_trace()
-            release_at = datetime.strptime(release_at, "%d-%b-%Y")
+        if released_at == '':
+            released_at = None
         else:
-            release_at = None
+            released_at = datetime.datetime.strptime(released_at, "%d-%b-%Y")
 
-        movie = Movie(movie_id=movie_id,
-                      title=title,
-                      released_at=release_at,
+        movie = Movie(movie_id=int(movie_id),
+                      title=title[0:-7],
+                      released_at=released_at,
                       imdb_url=imdb_url)
 
         db.session.add(movie)
@@ -66,22 +69,50 @@ def load_movies():
 
 def load_ratings():
     """Load ratings from u.data into database."""
-    print "Ratings"
-    Ratings.query.delete()
+
+    Rating.query.delete()
 
     for row in open("seed_data/u.data"):
-        row = row.rstrip()
-        #import pdb; pdb.set_trace()
+        row = row.rstrip().split('\t')
+        user_id, movie_id, score = row[0], row[1], row[2]
 
-        user_id, movie_id, score = row.split()[0:3]
+        rating = Rating(movie_id=int(movie_id),
+                        user_id=int(user_id),
+                        score=int(score))
 
-        ratings = Ratings(user_id=user_id,
-                          movie_id=movie_id,
-                          score=score)
-
-        db.session.add(ratings)
+        db.session.add(rating)
 
     db.session.commit()
+
+    #Add Judgmental Eye's ratings too
+    eye = User.query.filter(User.email == "the-eye@of-judgment.com").one()
+
+    # Toy Story
+    r = Rating(user_id=eye.user_id, movie_id=1, score=1)
+    db.session.add(r)
+
+    # Robocop 3
+    r = Rating(user_id=eye.user_id, movie_id=1274, score=5)
+    db.session.add(r)
+
+    # Judge Dredd
+    r = Rating(user_id=eye.user_id, movie_id=373, score=5)
+    db.session.add(r)
+
+    # 3 Ninjas
+    r = Rating(user_id=eye.user_id, movie_id=314, score=5)
+    db.session.add(r)
+
+    # Aladdin
+    r = Rating(user_id=eye.user_id, movie_id=95, score=1)
+    db.session.add(r)
+
+    # The Lion King
+    r = Rating(user_id=eye.user_id, movie_id=71, score=1)
+    db.session.add(r)
+
+    db.session.commit()
+
 
 def set_val_user_id():
     """Set value for the next user_id after seeding database"""
