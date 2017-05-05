@@ -2,15 +2,13 @@
 
 from jinja2 import StrictUndefined
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template, redirect, request, flash, session
 from flask_debugtoolbar import DebugToolbarExtension
 
-from model import connect_to_db, db
+from model import connect_to_db, db, User, Rating, Movie
 
-from flask import (Flask, render_template, redirect, request, flash,
-                   session)
-
-from model import User, Ratings, Movie, connect_to_db, db
+from bs4 import BeautifulSoup
+import requests
 
 
 app = Flask(__name__)
@@ -29,10 +27,11 @@ def index():
     """Homepage."""
     # a = jsonify([1,3])
     # return a
-    return render_template("homepage.html")
+
+    return render_template('homepage.html')
 
 
-@app.route('/users')
+@app.route("/users")
 def user_list():
     """Show list of users."""
 
@@ -40,62 +39,243 @@ def user_list():
     return render_template("user_list.html", users=users)
 
 
-@app.route('/register', methods=["GET"])
-def user_register_form():
-    """User registration form."""
+@app.route("/movies")
+def show_movies():
+    """Show list of movies."""
+
+    movies = Movie.query.all()
+    return render_template("movie_list.html", movies=movies)
+
+
+@app.route("/movies/<movie_id>")
+def movie_details(movie_id):
+    """Show details for a movie."""
+
+    # Get movie object
+    movie = Movie.query.filter_by(movie_id=movie_id).first()
+
+
+    t_url = movie.imdb_url
+    r = requests.get(t_url)
+    data = r.text
+    soup = BeautifulSoup(data, 'html.parser')
+    const_title = movie.title + ' Poster'
+
+    thumb = [x['src'] for x in soup.findAll('img', {'alt': const_title})]
+
+
+    # Get movie image
+    # url = movie.imdb_url
+    # r  = requests.get("http://" +url)
+    # data = r.text
+    # soup = BeautifulSoup(data)
+
+    # If no movie object (user entered url for invalic movie)
+    if not movie:
+        movie_list = Movie.query.all()
+        return render_template("movie_list.html", movies=movie_list)
+
+    # Check if current user is logged in, get their rating
+    user_id = session.get('user_id')
+    if user_id:
+        user_rating = Rating.query.filter_by(movie_id=movie_id,
+                                             user_id=user_id).first()
+    else:
+        user_rating = None
+
+    # Get average rating of movie
+    rating_scores = [r.score for r in movie.ratings]
+    avg_rating = float(sum(rating_scores)) / len(rating_scores)
+    prediction = None
+
+    # Predict rating if user hasn't rated movie
+    if (not user_rating) and user_id:
+        user = User.query.get(user_id)
+        if user:
+            prediction = user.predict_rating(movie)
+
+    # Evil eye stuff
+    if prediction:
+        effective_rating = prediction
+    elif user_rating:
+        effective_rating = user_rating.score
+    else:
+        effective_rating = None
+
+    # Get the eye's rating, either by predicting or using real rating
+    the_eye = User.query.filter_by(email='the-eye@of-judgment.com').one()
+    eye_rating = Rating.query.filter_by(
+        user_id=the_eye.user_id, movie_id=movie.movie_id).first()
+
+    if eye_rating is None:
+        eye_rating = the_eye.predict_rating(movie)
+
+    else:
+        eye_rating = eye_rating.score
+
+    if eye_rating and effective_rating:
+        difference = abs(eye_rating - effective_rating)
+
+    else:
+        difference = None
+
+    # Get beratement message
+    BERATEMENT_MESSAGES = [
+                    "I suppose you don't have such bad taste after all.",
+                    "I regret every decision that I've ever made that has " +
+                    "brought me to listen to your opinion.",
+                    "Words fail me, as your taste in movies has clearly " +
+                    "failed you.",
+                    "That movie is great. For a clown to watch. Idiot.",
+                    "Words cannot express the awfulness of your taste."
+    ]
+
+    if difference is not None:
+        beratement = BERATEMENT_MESSAGES[int(difference)]
+
+    else:
+        beratement = None
+
+    return render_template("movie_details.html",
+                           movie=movie,
+                           ratings=movie.ratings[0:10],
+                           user_rating=user_rating,
+                           average=round(avg_rating, 2),
+                           prediction=prediction,
+                           beratement=beratement,
+                           thumb=thumb[0])
+
+
+@app.route('/register', methods=['GET'])
+def register_user_form():
+    """Shows form to register a new user"""
 
     return render_template("register_form.html")
 
 
-@app.route('/register', methods=["POST"])
-def user_register_process():
-    """Process for user registration."""
+@app.route('/register', methods=['POST'])
+def register_user():
+    """Adds new User to DB, displays success message"""
 
-    email_received = request.form.get('email')
-    email_check = User.query.filter_by(email=email_received).all()
+    # Get info from form
+    email = request.form.get('email')
+    password = request.form.get('password')
+    age = request.form.get('age')
+    zipcode = request.form.get('zipcode')
 
-    if email_check == []:
-        password = request.form.get('password')
-        user=User(email=email_received, password=password)
-        db.session.add(user)
-        db.session.commit()
-    return redirect("/")
+    # Convert empty Int fields to None
+    if age == '':
+        age = None
+
+    print email
+
+    user = User(email=email,
+                password=password,
+                age=age,
+                zipcode=zipcode)
+
+    db.session.add(user)
+    db.session.commit()
+
+    return render_template("register_success.html",
+                           email=email,
+                           password=password,
+                           age=age,
+                           zipcode=zipcode)
+
+
+@app.route('/check_email.json', methods=['POST'])
+def check_email():
+
+    email = request.form.get('email')
+
+    email_check = {'email': 'free'}
+
+    if User.query.filter_by(email=email).first():
+        email_check['email'] = 'taken'
+
+    return jsonify(email_check)
 
 
 @app.route('/login', methods=['GET'])
-def user_login():
+def login_form():
+    """Displays form to login a user"""
 
-    print session
-    return render_template("login_form.html")
+    return render_template('login_form.html')
+    # return render_template('login_form_ajax.html')
+
+
+@app.route('/login.json', methods=['POST'])
+def verify_login():
+    """Checks if user in DB, and verifies password"""
+
+    result = {}
+
+    email = request.form.get('email')
+    password = request.form.get('password')
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        result['login'] = 'User not found'
+
+    elif password == str(user.password):
+        result['login'] = 'OK'
+
+    else:
+        result['login'] = 'Password does not match'
+
+    return jsonify(result)
+
 
 @app.route('/login', methods=['POST'])
-def verify_user_login():
+def login():
+    """Logs in a user"""
 
-    user_email = request.form.get('user_email')
-    user_password = request.form.get('user_password')
-    response = User.query.filter_by(email=user_email).all()
-    if response == []:
-        flash('Wrong username and/or password. Try again or Create New Account')
-        return redirect("/register")
-    email = response[0].email
-    password = response[0].password
-   # import pdb; pdb.set_trace()
-    if email == user_email and password == user_password:
-        session['user_email'] = request.form['user_email']
-        flash('You were successfully logged in')
-        return redirect("/")
+    email = request.form.get('email')
+    password = request.form.get('password')
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        flash('User not found!')
+
+    elif password == str(user.password):
+        session['user_id'] = user.user_id
+        flash('User: {} has been logged in!'.format(email))
+        # return render_template('homepage.html')
+        return redirect('/users/'+str(user.user_id))
+
     else:
-        flash('Wrong username and/or password. Try again or Create New Account')
-        return redirect("/register")
-@app.route('/logout', methods=['POST'])
-def user_logout():
-#     @app.route('/logout')
-# def logout():
-#    # remove the username from the session if it is there
-#    session.pop('username', None)
-#    return redirect(url_for('index'))
+        flash('Password does not match!')
 
-    return render_template("logout_form.html")
+    return render_template('login_form.html')
+
+
+@app.route('/logout')
+def logout():
+    """Logs a user out"""
+
+    del session['user_id']
+    flash('User has been logged out')
+
+    return render_template('homepage.html')
+
+
+@app.route('/users/<user_id>')
+def user_info(user_id):
+    """Displays details for an individual user"""
+
+    user = User.query.get(user_id)
+
+    # ratings = db.session.query(Rating.score, Movie.title).join(Movie).filter(Rating.user_id == user.user_id).all()
+    ratings = db.session.query(Rating.score, Movie.title).join(Movie).filter(Rating.user_id == user.user_id).all()
+
+    return render_template('user_details.html',
+                           email=user.email,
+                           age=user.age,
+                           zipcode=user.zipcode,
+                           ratings=ratings)
+
+
 if __name__ == "__main__":
     # We have to set debug=True here, since it has to be True at the
     # point that we invoke the DebugToolbarExtension
@@ -103,7 +283,6 @@ if __name__ == "__main__":
     app.jinja_env.auto_reload = app.debug  # make sure templates, etc. are not cached in debug mode
 
     connect_to_db(app)
-    db.session.commit()
 
     # Use the DebugToolbar
     DebugToolbarExtension(app)
